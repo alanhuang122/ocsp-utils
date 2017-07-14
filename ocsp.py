@@ -10,11 +10,10 @@ tlsv1 = SSL.Context(SSL.TLSv1_METHOD)
 tlsv11 = SSL.Context(SSL.TLSv1_1_METHOD)
 tlsv12 = SSL.Context(SSL.TLSv1_2_METHOD)
 
-contexts = [sslv3, sslv23, tlsv1, tlsv11, tlsv12]
+contexts = [tlsv12, tlsv11, tlsv1, sslv3, sslv23]
 
-def test_connect(hostname):
+def get_certs(hostname):
     for context in contexts:
-        print('trying {}'.format(context))
         try:
             s = socket.socket()
             conn = SSL.Connection(context, s)
@@ -24,18 +23,9 @@ def test_connect(hostname):
             conn.do_handshake()
             chain = conn.get_peer_cert_chain()
             print(chain)
-        except SSL.Error as e:
-            print(e)
-def do_connect(hostname, context):
-    s = socket.socket()
-    conn = SSL.Connection(context, s)
-    conn.set_connect_state()
-    conn.set_tlsext_host_name(hostname)
-    conn.connect((hostname, 443))
-    conn.do_handshake()
-    chain = conn.get_peer_cert_chain()
-    print(chain)
-    return chain
+            return chain
+        except:
+            continue
 
 def convert_to_oscrypto(chain):
     l = []
@@ -47,7 +37,11 @@ def create_ocsp_request(cert, issuer):
     builder = OCSPRequestBuilder(cert, issuer)
     return builder.build().dump()
 
-def get_ocsp_uri(cert):
+def get_ocsp_uri(hostname):
+    chain = get_certs(hostname)
+    return extract_ocsp_uri(chain[0])
+
+def extract_ocsp_uri(cert):
     return subprocess.Popen(["openssl", "x509", "-noout", "-ocsp_uri"], stdin=subprocess.PIPE, stdout=subprocess.PIPE)\
             .communicate(input=crypto.dump_certificate(crypto.FILETYPE_PEM, cert))[0].strip()
 
@@ -86,7 +80,11 @@ def parse_ocsp(response):
 def contact_ocsp_server(certs):
     chain = convert_to_oscrypto(certs)
     req = create_ocsp_request(chain[0], chain[1])
-    URI = get_ocsp_uri(certs[0])
-    data = requests.post(URI, data=req, stream=True)
+    URI = extract_ocsp_uri(certs[0])
+    data = requests.post(URI, data=req, stream=True, headers={'Content-Type' : 'application/ocsp-request'})
     response = ocsp.OCSPResponse.load(data.raw.data)
     return parse_ocsp(response)
+
+def get_response(hostname):
+    certs = get_certs(hostname)
+    return contact_ocsp_server(certs)

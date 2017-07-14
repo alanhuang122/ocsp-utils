@@ -13,39 +13,44 @@ tlsv12 = SSL.Context(SSL.TLSv1_2_METHOD)
 contexts = [tlsv12, tlsv11, tlsv1, sslv3, sslv23]
 
 def get_certs(hostname):
+    '''Get certs in OpenSSL.crypto.x509 format.'''
     for context in contexts:
         try:
             s = socket.socket()
             conn = SSL.Connection(context, s)
             conn.set_connect_state()
-            conn.set_tlsext_host_name(hostname)
+            conn.set_tlsext_host_name(hostname) #SNI
             conn.connect((hostname, 443))
             conn.do_handshake()
             chain = conn.get_peer_cert_chain()
-            print(chain)
             return chain
         except:
             continue
 
 def convert_to_oscrypto(chain):
+    '''Converts a list of certs from OpenSSL.crypto.x509 to oscrypto._openssl.asymmetric.Certificate'''
     l = []
     for c in chain:
         l.append(asymmetric.load_certificate(crypto.dump_certificate(crypto.FILETYPE_PEM, c).encode('latin-1')))
     return l
 
 def create_ocsp_request(cert, issuer):
+    '''Takes a certificate and the issuing certificate in oscrypto._openssl.asymmetric.Certificate format and creates an OCSP request body.'''
     builder = OCSPRequestBuilder(cert, issuer)
     return builder.build().dump()
 
 def get_ocsp_uri(hostname):
+    '''Gets the OCSP responder URL for a website.'''
     chain = get_certs(hostname)
     return extract_ocsp_uri(chain[0])
 
 def extract_ocsp_uri(cert):
+    '''Gets the OCSP responder URL for a OpenSSL.crypto.x509 certificate object.'''
     return subprocess.Popen(["openssl", "x509", "-noout", "-ocsp_uri"], stdin=subprocess.PIPE, stdout=subprocess.PIPE)\
             .communicate(input=crypto.dump_certificate(crypto.FILETYPE_PEM, cert))[0].strip()
 
 def parse_ocsp(response):
+    '''Converts from asn1crypto.ocsp.OCSPResponse to a dict'''
     OCSP = {}
     OCSP['status'] = response['response_status'].native
     if OCSP['status'] != 'successful':
@@ -78,6 +83,7 @@ def parse_ocsp(response):
     return OCSP
 
 def contact_ocsp_server(certs):
+    '''Sends an OCSP request to the responding server for a certificate chain'''
     chain = convert_to_oscrypto(certs)
     req = create_ocsp_request(chain[0], chain[1])
     URI = extract_ocsp_uri(certs[0])
@@ -86,5 +92,6 @@ def contact_ocsp_server(certs):
     return parse_ocsp(response)
 
 def get_response(hostname):
+    '''Gets and parses an OCSP response for a hostname'''
     certs = get_certs(hostname)
     return contact_ocsp_server(certs)

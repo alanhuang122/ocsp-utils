@@ -1,5 +1,5 @@
 from OpenSSL import SSL, crypto
-import socket, binascii, subprocess, requests
+import socket, binascii, subprocess, requests, idna
 from oscrypto import asymmetric
 from ocspbuilder import OCSPRequestBuilder
 from asn1crypto import core, ocsp, x509
@@ -11,6 +11,38 @@ tlsv11 = SSL.Context(SSL.TLSv1_1_METHOD)
 tlsv12 = SSL.Context(SSL.TLSv1_2_METHOD)
 
 contexts = [tlsv12, tlsv11, tlsv1, sslv3, sslv23]
+
+from flask import Flask, render_template, redirect, flash
+from forms import Form
+
+app = Flask(__name__)
+app.config.from_object('config')
+
+if __name__ == '__main__':
+    app.run()
+
+@app.route('/', methods=('GET', 'POST'))
+def application():
+    form = Form()
+    if form.validate_on_submit():
+        name = form.name.data
+        print(name)
+        encoded_name = idna.encode(name)
+        response = get_response(encoded_name)
+        print(response)
+        flash('response status: {}'.format(response['status']))
+        for r in response['data']['responses']:
+            flash('cert ID:')
+            ID = r['cert_id']
+            flash('\thash algorithm: {}'.format(ID['hash_algorithm']['algorithm']))
+            flash('\tissuer name hash: {}'.format(ID['issuer_name_hash']))
+            flash('\tissuer key hash: {}'.format(ID['issuer_key_hash']))
+            flash('\tserial number: {}'.format(ID['serial_number']))
+            flash('status: {}'.format(r['cert_status']))
+        flash('produced at: {}'.format(response['data']['produced_at']))
+        flash('responder: {}'.format(response['data']['responder_id']))
+        return render_template('results.html')
+    return render_template('ocsp.html', form=form)
 
 def get_certs(hostname):
     '''Get certs in OpenSSL.crypto.x509 format.'''
@@ -74,6 +106,8 @@ def parse_ocsp(response):
         respdata['cert_id']['issuer_key_hash'] = binascii.hexlify(response.response_data['responses'].native[0]['cert_id']['issuer_key_hash']).upper()
         respdata['cert_id']['serial_number'] = hex(response.response_data['responses'].native[0]['cert_id']['serial_number']).upper().replace('X', '')[:-1]
         respdata['cert_status'] = response.response_data['responses'].native[0]['cert_status']
+        if not respdata['cert_status']:
+            respdata['cert_status'] = 'good'
         #check for revoked
         respdata['this_update'] = response.response_data['responses'].native[0]['this_update']
         respdata['next_update'] = response.response_data['responses'].native[0]['next_update']
@@ -89,9 +123,11 @@ def contact_ocsp_server(certs):
     URI = extract_ocsp_uri(certs[0])
     data = requests.post(URI, data=req, stream=True, headers={'Content-Type' : 'application/ocsp-request'})
     response = ocsp.OCSPResponse.load(data.raw.data)
-    return parse_ocsp(response)
+    parsed = parse_ocsp(response)
+    return parsed
 
 def get_response(hostname):
     '''Gets and parses an OCSP response for a hostname'''
     certs = get_certs(hostname)
-    return contact_ocsp_server(certs)
+    parsed = contact_ocsp_server(certs)
+    return parsed

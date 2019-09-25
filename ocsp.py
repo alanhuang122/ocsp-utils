@@ -4,45 +4,16 @@ from oscrypto import asymmetric
 from ocspbuilder import OCSPRequestBuilder
 from asn1crypto import core, ocsp, x509
 
-sslv3 = SSL.Context(SSL.SSLv3_METHOD)
-sslv23 = SSL.Context(SSL.SSLv23_METHOD)
 tlsv1 = SSL.Context(SSL.TLSv1_METHOD)
 tlsv11 = SSL.Context(SSL.TLSv1_1_METHOD)
 tlsv12 = SSL.Context(SSL.TLSv1_2_METHOD)
 
-contexts = [tlsv12, tlsv11, tlsv1, sslv3, sslv23]
+contexts = [tlsv12, tlsv11, tlsv1]
 
-from flask import Flask, render_template, redirect, flash
-from forms import Form
-
-app = Flask(__name__)
-app.config.from_object('config')
-
-if __name__ == '__main__':
-    app.run()
-
-@app.route('/', methods=('GET', 'POST'))
-def application():
-    form = Form()
-    if form.validate_on_submit():
-        name = form.name.data
-        print(name)
-        encoded_name = idna.encode(name)
-        response = get_response(encoded_name)
-        print(response)
-        flash('response status: {}'.format(response['status']))
-        for r in response['data']['responses']:
-            flash('cert ID:')
-            ID = r['cert_id']
-            flash('\thash algorithm: {}'.format(ID['hash_algorithm']['algorithm']))
-            flash('\tissuer name hash: {}'.format(ID['issuer_name_hash']))
-            flash('\tissuer key hash: {}'.format(ID['issuer_key_hash']))
-            flash('\tserial number: {}'.format(ID['serial_number']))
-            flash('status: {}'.format(r['cert_status']))
-        flash('produced at: {}'.format(response['data']['produced_at']))
-        flash('responder: {}'.format(response['data']['responder_id']))
-        return render_template('results.html')
-    return render_template('ocsp.html', form=form)
+def lookup(name):
+    encoded_name = idna.encode(name)
+    response = get_response(encoded_name)
+    return response
 
 def get_certs(hostname):
     '''Get certs in OpenSSL.crypto.x509 format.'''
@@ -63,7 +34,7 @@ def convert_to_oscrypto(chain):
     '''Converts a list of certs from OpenSSL.crypto.x509 to oscrypto._openssl.asymmetric.Certificate'''
     l = []
     for c in chain:
-        l.append(asymmetric.load_certificate(crypto.dump_certificate(crypto.FILETYPE_PEM, c).encode('latin-1')))
+        l.append(asymmetric.load_certificate(crypto.dump_certificate(crypto.FILETYPE_PEM, c)))
     return l
 
 def create_ocsp_request(cert, issuer):

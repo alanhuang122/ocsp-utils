@@ -1,0 +1,4 @@
+pyOpenSSL
+oscrypto
+ocspbuilder
+requests

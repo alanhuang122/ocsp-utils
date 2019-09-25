@@ -1,5 +1,6 @@
+#!/usr/bin/env python
 from OpenSSL import SSL, crypto
-import socket, binascii, subprocess, requests, idna
+import socket, binascii, subprocess, requests, idna, sys
 from oscrypto import asymmetric
 from ocspbuilder import OCSPRequestBuilder
 from asn1crypto import core, ocsp, x509
@@ -102,3 +103,6 @@ def get_response(hostname):
     certs = get_certs(hostname)
     parsed = contact_ocsp_server(certs)
     return parsed
+
+if __name__ == "__main__":
+    print(lookup(sys.argv[1]))

@@ -105,4 +105,7 @@ def get_response(hostname):
     return parsed
 
 if __name__ == "__main__":
-    print(lookup(sys.argv[1]))
+    if len(sys.argv) != 2:
+        print("Usage: {} <hostname>".format(sys.argv[0]))
+    else:
+        print(lookup(sys.argv[1]))
